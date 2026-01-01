@@ -1,0 +1,10 @@
+name = "LeanLanguage"
+version = "0.1.0"
+defaultTargets = ["leanlanguage"]
+
+[[lean_lib]]
+name = "LeanLanguage"
+
+[[lean_exe]]
+name = "leanlanguage"
+root = "Main"
