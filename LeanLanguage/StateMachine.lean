@@ -1,8 +1,18 @@
+import Mathlib.Data.Fintype.Basic
+
 inductive State where
   | notStarted
   | started
   | completed
   deriving Repr, DecidableEq
+
+instance : Fintype State where
+  elems := ⟨[State.notStarted, State.started, State.completed], by simp⟩
+  complete := λ e => by
+   cases e
+   all_goals simp
+
+noncomputable def allStates : List State := Fintype.elems.toList
 
 inductive Event where
   | start
