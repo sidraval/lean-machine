@@ -1,4 +1,5 @@
 import Mathlib.Data.Fintype.Basic
+import Mathlib.Data.Fintype.Card
 
 inductive State where
   | notStarted
@@ -12,26 +13,12 @@ instance : Fintype State where
    cases e
    all_goals simp
 
-noncomputable def allStates : List State := Fintype.elems.toList
+def numberOfStates : Nat := Fintype.card State
 
 inductive Event where
   | start
   | complete
   deriving Repr, DecidableEq
-
-def ValidTransition : Event -> State -> Prop
-  | .start, .notStarted => True
-  | .complete, .started => True
-  | _, _ => False
-
--- TODO: Add decidable instance for ValidTransition
-
-def transitionViaEvent (e : Event) (s : State) (h : ValidTransition e s) : State :=
-  match e,s with
-  | .start, .notStarted => .started
-  | .complete, .started => .completed
-
-#eval transitionViaEvent .start .notStarted (by simp [ValidTransition])
 
 structure StateMachineType where
   initialState : State := .notStarted
@@ -46,17 +33,15 @@ def nextReachableStates : (events : List Event) -> StateMachineType -> State -> 
       else accum)
     []
 
+def expandReachable
+  (events : List Event)
+  (smt : StateMachineType)
+  (current: List State) : List State :=
+    let nextStates := current.flatMap (nextReachableStates events smt)
+    List.dedup (current ++ nextStates)
+ 
 def allPossibleStates : (List Event) -> StateMachineType -> State -> List State := λ events smt s =>
-  (nextReachableStates events smt s).flatMap λ nextState => allPossibleStates events smt nextState
-  -- We need to track states we've already processed, so that we don't run `nextReachableStates` on them again
-  -- The difference between all possible states and the states we've processed should be decreasing
-  -- For example, in the 'Acknowledgeable' case, we can only process notStarted -> completed via the complete event.
-  -- If we keep track that we've already processed 'notStarted', the next iteration should see that there are
-  -- no valid transitions for the remaining states
-  -- We need to provide termination_by and decreasing_by
-
-def validStates : List Event -> StateMachineType -> List State
-| events, smt => nextReachableStates events smt smt.initialState
+  Nat.iterate (expandReachable events smt) (numberOfStates) [s]
 
 def Acknowledgeable : StateMachineType := {
   validTransition := λ e s => match e, s with
@@ -78,7 +63,23 @@ def Completeable : StateMachineType := {
   | .start, .notStarted => .started
 }
 
+-- TODO: Fintype instance?
+def events : List Event := [.start, .complete]
+
+#eval allPossibleStates events Acknowledgeable State.notStarted
+#eval allPossibleStates events Completeable State.notStarted
+
 structure AugustTask where
   state : State
   stateMachineType : StateMachineType
-  -- isValidState : state ∈ allPossibleStates events smt smt.initialState := by decide ???
+  isValidState : state ∈ allPossibleStates events stateMachineType stateMachineType.initialState := by decide
+
+-- Acknowledgeable state machine
+#check_failure AugustTask.mk .started Acknowledgeable
+#check AugustTask.mk .completed Acknowledgeable
+#check AugustTask.mk .notStarted Acknowledgeable
+
+-- Completeable state machine
+#check AugustTask.mk .notStarted Completeable
+#check AugustTask.mk .started Completeable
+#check AugustTask.mk .completed Completeable
