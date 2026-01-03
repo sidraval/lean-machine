@@ -5,12 +5,13 @@ inductive State where
   | notStarted
   | started
   | assignedToFamily
+  | pendingSignatures
   | completed
   deriving Repr, DecidableEq
 
 instance : Fintype State where
   elems := ⟨
-    [State.notStarted, State.started, State.assignedToFamily, State.completed],
+    [State.notStarted, State.started, State.assignedToFamily, State.pendingSignatures, State.completed],
     by simp
   ⟩
   complete := λ e => by
@@ -21,19 +22,20 @@ def numberOfStates := Fintype.card State
 
 inductive Event where
   | start
+  | sign
   | complete
   deriving Repr, DecidableEq
 
 instance : Fintype Event where
   elems := ⟨
-    [Event.start, Event.complete],
+    [Event.start, .sign, .complete],
     by simp
   ⟩
   complete := λ e => by
     cases e
     all_goals simp
 
-def events : List Event := [.start, .complete]
+def events : List Event := [.start, .sign, .complete]
 
 structure StateMachineType where
   initialState : State := .notStarted
@@ -93,6 +95,23 @@ def Completeable : ValidStateMachineType := {
   smt := RawCompleteable
 }
 
+def RawSignable : StateMachineType := {
+  validTransition := λ e s => match e, s with
+  | .start, .notStarted => True
+  | .sign, .started => True
+  | .complete, .pendingSignatures => True
+  | _, _ => False
+
+  nextState := λ e s _ => match e, s with
+  | .start, .notStarted => .started
+  | .sign, .started => .pendingSignatures
+  | .complete, .pendingSignatures => .completed
+}
+
+def Signable : ValidStateMachineType := {
+  smt := RawSignable
+}
+
 #eval allPossibleStates events Acknowledgeable.smt State.notStarted
 #eval allPossibleStates events Completeable.smt State.notStarted
 #eval Acknowledgeable.isShareable
@@ -101,26 +120,56 @@ structure AugustTask (f : State -> Type) where
   state : State
   stateMachineType : ValidStateMachineType
   data : f state
-  isValidState : state ∈ allPossibleStates events stateMachineType.smt stateMachineType.smt.initialState := by decide
-
-/- def example := AugustTask.mk  -/
+  isValidState :
+    state ∈ allPossibleStates events stateMachineType.smt stateMachineType.smt.initialState := by decide
 
 structure Signatures (s : State) where
   signatures : List String
-  hasSignatures : 
+  hasSignatures :
     match s with
     | .notStarted => signatures = []
-    | _ => True
+    | .started => signatures = []
+    | .assignedToFamily => signatures = []
+    | .pendingSignatures => True
+    | .completed => True
     := by decide
 
-def signableTask : AugustTask Signatures := AugustTask.mk .started Completeable (Signatures.mk ["a"])
+def signableTask : AugustTask Signatures := AugustTask.mk .started Signable (Signatures.mk [])
 
--- Acknowledgeable state machine
-#check_failure AugustTask.mk (f := λ _ => Nat) .started Acknowledgeable 1
-#check AugustTask.mk (f := λ _ => Nat) .completed Acknowledgeable 1
-#check AugustTask.mk .notStarted Acknowledgeable
+lemma nextState_mem_nextReachableStates
+  (e : Event) (s : State) (smt : StateMachineType)
+  (hEvent : e ∈ events)
+  (hValid : smt.validTransition e s) :
+  smt.nextState e s hValid ∈ nextReachableStates events smt s := by
+    cases hEvent
+    case head =>
+      unfold nextReachableStates
+      unfold events
+      simp [hValid]
+    case tail states =>
+      cases states
+      case head =>
+        unfold nextReachableStates
+        unfold events
+        simp [hValid]
 
--- Completeable state machine
-#check AugustTask.mk .notStarted Completeable
-#check AugustTask.mk .started Completeable
-#check AugustTask.mk .completed Completeable
+
+
+lemma validTransitionProducesPossibleState
+  (smt : StateMachineType)
+  (event : Event)
+  (state : State)
+  (h : smt.validTransition event state = true)
+  : smt.nextState event state h ∈ allPossibleStates events smt s := by sorry
+
+def sign
+  (inTask : AugustTask Signatures)
+  (h : inTask.stateMachineType.smt.validTransition .sign inTask.state)
+  (newData : Signatures (inTask.stateMachineType.smt.nextState .sign inTask.state h))
+  : AugustTask Signatures := {
+    state := inTask.stateMachineType.smt.nextState .sign inTask.state h
+    stateMachineType := inTask.stateMachineType
+    data := newData
+    isValidState := by
+      sorry
+  }
