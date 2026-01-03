@@ -1,3 +1,4 @@
+-- Our possible states, modeled as a simple ADT.
 inductive State where
   | notStarted
   | started
@@ -6,28 +7,40 @@ inductive State where
   | completed
   deriving Repr, DecidableEq
 
+-- Events that trigger state transitions.
 inductive Event where
   | start
   | sign
   | complete
   deriving Repr, DecidableEq
 
-/-!
-## Core State Machine Definition
-
-The key insight: instead of computing `possibleStates` as a List and requiring
-membership proofs, we define `Reachable` as an inductive predicate.
-This makes transition proofs trivial - just apply the `step` constructor.
--/
-
+-- The core state machine type definition is composed of:
+-- initialState: self explanatory
+-- validTransition: a function that describes all the valid transitions
+-- nextState: a function that produces the next state.
+--
+-- The cool thing here is that the type of `nextState` depends on
+-- the VALUE of applying validTransition to event & state.
+-- This is the first example of dependent typing we've come across:
+-- a type depending on a value!
 structure StateMachineType where
   initialState : State := .notStarted
   validTransition : Event → State → Bool
   nextState : (e : Event) → (s : State) → validTransition e s → State
 
-/-- Inductive definition of reachability. A state is reachable if:
-    1. It's the initial state, or
-    2. It's reachable via a valid transition from another reachable state -/
+-- Here, we define the concept of Reachability. The reachable type is
+-- parameterized by a StateMachineType and a State and returns a
+-- proof (!) that the State is reachable.
+--
+-- The 'proof' here comes from the return type of Prop, which means
+-- proposition. It's another special feature of Lean: formal verification.
+--
+-- A state is reachable if:
+-- 1. It's the initial state
+-- 2. It's reachable via a valid transition from another reachable state
+--
+-- The step constructor is "universally quantified" over State & Event
+-- i.e. it works for all states and events.
 inductive Reachable (smt : StateMachineType) : State → Prop where
   | initial : Reachable smt smt.initialState
   | step : ∀ {s : State} {e : Event},
@@ -35,52 +48,14 @@ inductive Reachable (smt : StateMachineType) : State → Prop where
            (h : smt.validTransition e s) →
            Reachable smt (smt.nextState e s h)
 
-/-- A valid state machine can reach the completed state -/
+-- A ValidStateMachine is constructed by providing a StateMachineType
+-- and a proof that it's possible to reach the completed state.
 structure ValidStateMachineType where
   smt : StateMachineType
   isCompleteable : Reachable smt .completed
 
-/-!
-## Concrete State Machines
--/
-
-def RawAcknowledgeable : StateMachineType := {
-  validTransition := λ e s => match e, s with
-  | .complete, .notStarted => true
-  | _, _ => false
-
-  nextState := λ e s _ => match e, s with
-  | .complete, .notStarted => .completed
-}
-
-def Acknowledgeable : ValidStateMachineType := {
-  smt := RawAcknowledgeable
-  isCompleteable := by
-    -- notStarted → completed via .complete
-    have h : RawAcknowledgeable.validTransition .complete .notStarted := rfl
-    exact Reachable.step Reachable.initial h
-}
-
-def RawCompleteable : StateMachineType := {
-  validTransition := λ e s => match e, s with
-  | .start, .notStarted => true
-  | .complete, .started => true
-  | _, _ => false
-
-  nextState := λ e s _ => match e, s with
-  | .start, .notStarted => .started
-  | .complete, .started => .completed
-}
-
-def Completeable : ValidStateMachineType := {
-  smt := RawCompleteable
-  isCompleteable := by
-    -- notStarted → started → completed
-    have h1 : RawCompleteable.validTransition .start .notStarted := rfl
-    have h2 : RawCompleteable.validTransition .complete .started := rfl
-    exact Reachable.step (Reachable.step Reachable.initial h1) h2
-}
-
+-- Here, we define a RawSignable StateMachine type, providing the
+--- validTransition and nextState functions - nothing special here.
 def RawSignable : StateMachineType := {
   validTransition := λ e s => match e, s with
   | .start, .notStarted => true
@@ -94,10 +69,16 @@ def RawSignable : StateMachineType := {
   | .complete, .pendingSignatures => .completed
 }
 
+-- Now, we define our 'real' Signable ValidStateMachineType.
+-- Here, we need to provide a proof that we can reach the completed state.
+-- We accomplish this via a special Lean feature called 'tactics mode'
+-- which I think of as 'proving mode'
+--
+-- In our case, the proof is simply demonstrating the path:
+-- notStarted → started → pendingSignatures → completed
 def Signable : ValidStateMachineType := {
   smt := RawSignable
   isCompleteable := by
-    -- notStarted → started → pendingSignatures → completed
     have h1 : RawSignable.validTransition .start .notStarted := rfl
     have h2 : RawSignable.validTransition .sign .started := rfl
     have h3 : RawSignable.validTransition .complete .pendingSignatures := rfl
