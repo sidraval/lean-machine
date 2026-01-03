@@ -4,11 +4,15 @@ import Mathlib.Data.Fintype.Card
 inductive State where
   | notStarted
   | started
+  | assignedToFamily
   | completed
   deriving Repr, DecidableEq
 
 instance : Fintype State where
-  elems := ⟨[State.notStarted, State.started, State.completed], by simp⟩
+  elems := ⟨
+    [State.notStarted, State.started, State.assignedToFamily, State.completed],
+    by simp
+  ⟩
   complete := λ e => by
    cases e
    all_goals simp
@@ -19,6 +23,18 @@ inductive Event where
   | start
   | complete
   deriving Repr, DecidableEq
+
+instance : Fintype Event where
+  elems := ⟨
+    [Event.start, Event.complete],
+    by simp
+  ⟩
+  complete := λ e => by
+    cases e
+    all_goals simp
+
+-- TODO: Fintype instance?
+def events : List Event := [.start, .complete]
 
 structure StateMachineType where
   initialState : State := .notStarted
@@ -43,7 +59,14 @@ def expandReachable
 def allPossibleStates : (List Event) -> StateMachineType -> State -> List State := λ events smt s =>
   Nat.iterate (expandReachable events smt) (numberOfStates) [s]
 
-def Acknowledgeable : StateMachineType := {
+structure ValidStateMachineType where
+  smt : StateMachineType
+  isCompleteable : State.completed ∈ allPossibleStates events smt smt.initialState := by decide
+
+def ValidStateMachineType.isShareable (vsm : ValidStateMachineType) : Bool :=
+  State.assignedToFamily ∈ allPossibleStates events vsm.smt vsm.smt.initialState
+
+def RawAcknowledgeable : StateMachineType := {
   validTransition := λ e s => match e, s with
   | .complete, .notStarted => True
   | _, _ => False
@@ -52,7 +75,11 @@ def Acknowledgeable : StateMachineType := {
   | .complete, .notStarted => .completed
 }
 
-def Completeable : StateMachineType := {
+def Acknowledgeable : ValidStateMachineType := {
+  smt := RawAcknowledgeable
+}
+
+def RawCompleteable : StateMachineType := {
   validTransition := λ e s => match e, s with
   | .start, .notStarted => True
   | .complete, .started => True
@@ -63,16 +90,18 @@ def Completeable : StateMachineType := {
   | .start, .notStarted => .started
 }
 
--- TODO: Fintype instance?
-def events : List Event := [.start, .complete]
+def Completeable : ValidStateMachineType := {
+  smt := RawCompleteable
+}
 
-#eval allPossibleStates events Acknowledgeable State.notStarted
-#eval allPossibleStates events Completeable State.notStarted
+#eval allPossibleStates events Acknowledgeable.smt State.notStarted
+#eval allPossibleStates events Completeable.smt State.notStarted
+#eval Acknowledgeable.isShareable
 
 structure AugustTask where
   state : State
-  stateMachineType : StateMachineType
-  isValidState : state ∈ allPossibleStates events stateMachineType stateMachineType.initialState := by decide
+  stateMachineType : ValidStateMachineType
+  isValidState : state ∈ allPossibleStates events stateMachineType.smt stateMachineType.smt.initialState := by decide
 
 -- Acknowledgeable state machine
 #check_failure AugustTask.mk .started Acknowledgeable
