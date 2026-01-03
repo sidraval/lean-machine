@@ -17,7 +17,7 @@ instance : Fintype State where
    cases e
    all_goals simp
 
-def numberOfStates : Nat := Fintype.card State
+def numberOfStates := Fintype.card State
 
 inductive Event where
   | start
@@ -33,7 +33,6 @@ instance : Fintype Event where
     cases e
     all_goals simp
 
--- TODO: Fintype instance?
 def events : List Event := [.start, .complete]
 
 structure StateMachineType where
@@ -98,14 +97,27 @@ def Completeable : ValidStateMachineType := {
 #eval allPossibleStates events Completeable.smt State.notStarted
 #eval Acknowledgeable.isShareable
 
-structure AugustTask where
+structure AugustTask (f : State -> Type) where
   state : State
   stateMachineType : ValidStateMachineType
+  data : f state
   isValidState : state ∈ allPossibleStates events stateMachineType.smt stateMachineType.smt.initialState := by decide
 
+/- def example := AugustTask.mk  -/
+
+structure Signatures (s : State) where
+  signatures : List String
+  hasSignatures : 
+    match s with
+    | .notStarted => signatures = []
+    | _ => True
+    := by decide
+
+def signableTask : AugustTask Signatures := AugustTask.mk .started Completeable (Signatures.mk ["a"])
+
 -- Acknowledgeable state machine
-#check_failure AugustTask.mk .started Acknowledgeable
-#check AugustTask.mk .completed Acknowledgeable
+#check_failure AugustTask.mk (f := λ _ => Nat) .started Acknowledgeable 1
+#check AugustTask.mk (f := λ _ => Nat) .completed Acknowledgeable 1
 #check AugustTask.mk .notStarted Acknowledgeable
 
 -- Completeable state machine
