@@ -136,23 +136,35 @@ structure Signatures (s : State) where
 
 def signableTask : AugustTask Signatures := AugustTask.mk .started Signable (Signatures.mk [])
 
+lemma general_nextState_mem_nextReachableStates
+  (e : Event) (s : State) (smt : StateMachineType)
+  (l : List Event)
+  (hmem : e ∈ l)
+  (hValid : smt.validTransition e s) :
+  smt.nextState e s hValid ∈ nextReachableStates l smt s := by
+  unfold nextReachableStates
+  induction l with
+  | nil => contradiction
+  | cons head tail ih =>
+    simp [List.foldr_cons]
+    split
+    case isTrue hHead =>
+      cases hmem
+      · simp_all
+      · next hTail =>
+        apply List.mem_cons_of_mem
+        exact ih hTail
+    case isFalse hHead =>
+      cases hmem
+      · contradiction
+      · next hTail => exact ih hTail
+
 lemma nextState_mem_nextReachableStates
   (e : Event) (s : State) (smt : StateMachineType)
   (hEvent : e ∈ events)
   (hValid : smt.validTransition e s) :
   smt.nextState e s hValid ∈ nextReachableStates events smt s := by
-    cases hEvent
-    case head =>
-      unfold nextReachableStates
-      unfold events
-      simp [hValid]
-    case tail states =>
-      cases states
-      case head =>
-        unfold nextReachableStates
-        unfold events
-        simp [hValid]
-
+  exact general_nextState_mem_nextReachableStates e s smt events hEvent hValid
 
 
 lemma validTransitionProducesPossibleState
@@ -160,7 +172,7 @@ lemma validTransitionProducesPossibleState
   (event : Event)
   (state : State)
   (h : smt.validTransition event state = true)
-  : smt.nextState event state h ∈ allPossibleStates events smt s := by sorry
+  : smt.nextState event state h ∈ allPossibleStates events smt state := by sorry
 
 def sign
   (inTask : AugustTask Signatures)
