@@ -62,6 +62,7 @@ def allPossibleStates : (List Event) -> StateMachineType -> State -> List State 
 
 structure ValidStateMachineType where
   smt : StateMachineType
+  possibleStates : List State := allPossibleStates events smt smt.initialState
   isCompleteable : State.completed ∈ allPossibleStates events smt smt.initialState := by decide
 
 def ValidStateMachineType.isShareable (vsm : ValidStateMachineType) : Bool :=
@@ -121,7 +122,7 @@ structure AugustTask (f : State -> Type) where
   stateMachineType : ValidStateMachineType
   data : f state
   isValidState :
-    state ∈ allPossibleStates events stateMachineType.smt stateMachineType.smt.initialState := by decide
+    state ∈ stateMachineType.possibleStates := by decide
 
 structure Signatures (s : State) where
   signatures : List String
@@ -135,6 +136,8 @@ structure Signatures (s : State) where
     := by decide
 
 def signableTask : AugustTask Signatures := AugustTask.mk .started Signable (Signatures.mk [])
+
+#eval signableTask.stateMachineType.possibleStates
 
 lemma general_nextState_mem_nextReachableStates
   (e : Event) (s : State) (smt : StateMachineType)
