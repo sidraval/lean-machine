@@ -30,16 +30,16 @@ structure StateMachineType where
 
 -- Here, we define the concept of Reachability. The reachable type is
 -- parameterized by a StateMachineType and a State and returns a
--- proof (!) that the State is reachable.
+-- proposition (!) that the State is reachable.
 --
--- The 'proof' here comes from the return type of Prop, which means
+-- The 'proposition' here comes from the return type of Prop, which means
 -- proposition. It's another special feature of Lean: formal verification.
 --
 -- A state is reachable if:
 -- 1. It's the initial state
 -- 2. It's reachable via a valid transition from another reachable state
 --
--- The step constructor is "universally quantified" over State & Event
+-- The step constructor is "universally quantified (∀)" over State & Event
 -- i.e. it works for all states and events.
 inductive Reachable (smt : StateMachineType) : State → Prop where
   | initial : Reachable smt smt.initialState
@@ -85,21 +85,21 @@ def Signable : ValidStateMachineType := {
     exact Reachable.step (Reachable.step (Reachable.step Reachable.initial h1) h2) h3
 }
 
-/-!
-## Task with State-Dependent Data
-
-The task now carries a `Reachable` proof instead of list membership.
--/
-
+-- Now we define our task structure (a structure is just an inductive
+-- type with a single constructor). Tasks are parameterized by their
+-- state machine type, as well as a (dependently typed) function that
+-- tells that state what Type of data it can have in each state.
 structure AugustTask (smt : StateMachineType) (f : State → Type) where
   state : State
   data : f state
   isReachable : Reachable smt state
 
-/-!
-## State-Dependent Data: Signatures
--/
-
+-- We define a Signatures data structure that we'll use as the `f`
+-- parameter above. This expresses that "In certain states, an
+-- AugustTask will have signature data"
+--
+-- In our case, only a task in .pendingSignatures or .completed
+-- can have signature data, as encoded by the hasSignatures proposition.
 structure Signatures (s : State) where
   signatures : List String
   hasSignatures :
@@ -111,24 +111,14 @@ structure Signatures (s : State) where
     | .completed => True
     := by decide
 
-/-!
-## Transition Functions
-
-These are now trivial to implement - the reachability proof is just
-`Reachable.step` applied to the existing proof.
--/
-
-def sign
-  (task : AugustTask smt Signatures)
-  (h : smt.validTransition .sign task.state)
-  (newData : Signatures (smt.nextState .sign task.state h))
-  : AugustTask smt Signatures := {
-    state := smt.nextState .sign task.state h
-    data := newData
-    isReachable := Reachable.step task.isReachable h  -- That's it!
-  }
-
+-- We define transition functions, start/sign/complete that
+-- progress a task through the different states. Note that
+-- there are _compile time_ guarantees that e.g. a task in
+-- State.notStarted cannot have signature data!
+--
+-- The { smt : StateMachineType } denotes an implicit parameter.
 def start
+  { smt : StateMachineType }
   (task : AugustTask smt Signatures)
   (h : smt.validTransition .start task.state)
   (newData : Signatures (smt.nextState .start task.state h))
@@ -138,7 +128,19 @@ def start
     isReachable := Reachable.step task.isReachable h
   }
 
+def sign
+  { smt : StateMachineType }
+  (task : AugustTask smt Signatures)
+  (h : smt.validTransition .sign task.state)
+  (newData : Signatures (smt.nextState .sign task.state h))
+  : AugustTask smt Signatures := {
+    state := smt.nextState .sign task.state h
+    data := newData
+    isReachable := Reachable.step task.isReachable h  -- That's it!
+  }
+
 def complete
+  { smt : StateMachineType }
   (task : AugustTask smt Signatures)
   (h : smt.validTransition .complete task.state)
   (newData : Signatures (smt.nextState .complete task.state h))
@@ -147,22 +149,6 @@ def complete
     data := newData
     isReachable := Reachable.step task.isReachable h
   }
-
-/-- Generic transition function that works for any event -/
-def transition
-  (task : AugustTask smt f)
-  (e : Event)
-  (h : smt.validTransition e task.state)
-  (newData : f (smt.nextState e task.state h))
-  : AugustTask smt f := {
-    state := smt.nextState e task.state h
-    data := newData
-    isReachable := Reachable.step task.isReachable h
-  }
-
-/-!
-## Example Usage
--/
 
 def initialSignableTask : AugustTask RawSignable Signatures := {
   state := .notStarted
