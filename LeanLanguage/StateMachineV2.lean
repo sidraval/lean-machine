@@ -89,10 +89,10 @@ def Signable : ValidStateMachineType := {
 -- type with a single constructor). Tasks are parameterized by their
 -- state machine type, as well as a (dependently typed) function that
 -- tells that state what Type of data it can have in each state.
-structure AugustTask (smt : StateMachineType) (f : State → Type) where
+structure AugustTask (smt : ValidStateMachineType) (f : State → Type) where
   state : State
   data : f state
-  isReachable : Reachable smt state
+  isReachable : Reachable smt.smt state
 
 -- We define a Signatures data structure that we'll use as the `f`
 -- parameter above. This expresses that "In certain states, an
@@ -118,54 +118,54 @@ structure Signatures (s : State) where
 --
 -- The { smt : StateMachineType } denotes an implicit parameter.
 def start
-  { smt : StateMachineType }
+  { smt : ValidStateMachineType }
   (task : AugustTask smt Signatures)
-  (h : smt.validTransition .start task.state)
-  (newData : Signatures (smt.nextState .start task.state h))
+  (h : smt.smt.validTransition .start task.state)
+  (newData : Signatures (smt.smt.nextState .start task.state h))
   : AugustTask smt Signatures := {
-    state := smt.nextState .start task.state h
+    state := smt.smt.nextState .start task.state h
     data := newData
     isReachable := Reachable.step task.isReachable h
   }
 
 def sign
-  { smt : StateMachineType }
+  { smt : ValidStateMachineType }
   (task : AugustTask smt Signatures)
-  (h : smt.validTransition .sign task.state)
-  (newData : Signatures (smt.nextState .sign task.state h))
+  (h : smt.smt.validTransition .sign task.state)
+  (newData : Signatures (smt.smt.nextState .sign task.state h))
   : AugustTask smt Signatures := {
-    state := smt.nextState .sign task.state h
+    state := smt.smt.nextState .sign task.state h
     data := newData
     isReachable := Reachable.step task.isReachable h  -- That's it!
   }
 
 def complete
-  { smt : StateMachineType }
+  { smt : ValidStateMachineType }
   (task : AugustTask smt Signatures)
-  (h : smt.validTransition .complete task.state)
-  (newData : Signatures (smt.nextState .complete task.state h))
+  (h : smt.smt.validTransition .complete task.state)
+  (newData : Signatures (smt.smt.nextState .complete task.state h))
   : AugustTask smt Signatures := {
-    state := smt.nextState .complete task.state h
+    state := smt.smt.nextState .complete task.state h
     data := newData
     isReachable := Reachable.step task.isReachable h
   }
 
-def initialSignableTask : AugustTask RawSignable Signatures := {
+def initialSignableTask : AugustTask Signable Signatures := {
   state := .notStarted
   data := Signatures.mk []
   isReachable := Reachable.initial
 }
 
 -- Start the task
-def startedTask : AugustTask RawSignable Signatures :=
+def startedTask : AugustTask Signable Signatures :=
   start initialSignableTask rfl (Signatures.mk [] rfl)
 
 -- Sign the task
-def signedTask : AugustTask RawSignable Signatures :=
+def signedTask : AugustTask Signable Signatures :=
   sign startedTask rfl (Signatures.mk ["Alice", "Bob"] trivial)
 
 -- Complete the task
-def completedTask : AugustTask RawSignable Signatures :=
+def completedTask : AugustTask Signable Signatures :=
   complete signedTask rfl (Signatures.mk ["Alice", "Bob"] trivial)
 
 #check completedTask.isReachable
